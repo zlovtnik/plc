@@ -12,17 +12,25 @@
 
 ### Running the Proof of Concept
 
-1. Start the collector: `./collector.pl`
-2. In another terminal, run the agent: `./agent.pl` (first send auth key 'secret')
+1. Start the collector: `export AUTH_KEY=secret TLS_CERT_PATH=/Users/rcs/git/plc/cert.pem TLS_KEY_PATH=/Users/rcs/git/plc/key.pem && ./collector.pl`
+2. In another terminal, run the agent: `export AUTH_TOKEN=secret CERT_DIR=/Users/rcs/git/plc && ./agent.pl` (auth token and cert dir loaded from env)
 3. Check the collector output for received message and indexing confirmation.
 4. Search logs: `./search_logs.pl`
 
+### Security Setup
+
+- Collector requires AUTH_KEY, TLS_CERT_PATH, TLS_KEY_PATH environment variables
+- Agent requires AUTH_TOKEN environment variable
+- Use secrets manager for production instead of env vars
+- Ensure config files are not committed with secrets (.gitignore added)
+
 ### Security Features
 
-- **TLS Encryption**: Collector uses TLS with self-signed certificate
-- **Authentication**: Agents must send 'secret' as first message
+- **TLS Encryption**: Collector uses TLS with certificates from env vars
+- **Authentication**: Agents authenticate with token from environment variable
 - **Rate Limiting**: 100 tokens max, 10 tokens/second refill per connection
 - **Connection Limits**: Max 100 concurrent connections
+- **Secret Management**: All secrets loaded from env vars, no hardcoded values
 
 ### Files
 

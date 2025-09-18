@@ -1,0 +1,9 @@
+# Configuration files with secrets
+agent.yml
+
+# Logs
+*.log
+
+# Certificates (if generated)
+cert.pem
+key.pem

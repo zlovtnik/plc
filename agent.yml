@@ -12,13 +12,15 @@ collector:
     # - host: backup.example.com
     #   port: 8080
   auth:
-    token: secret        # Authentication token (required for collector)
+    token: ${AUTH_TOKEN}  # Load from environment variable AUTH_TOKEN at runtime
+    # Provision securely: export AUTH_TOKEN=your_secret_token
+    # Or use secrets manager: token: ${SECRET_MANAGER_PATH}
     # username: user      # Alternative: username/password auth
     # password: pass
   tls:
-    ca: /Users/rcs/git/plc/cert.pem    # CA certificate path (optional)
-    cert: /Users/rcs/git/plc/client.pem # Client certificate (optional)
-    key: /Users/rcs/git/plc/client.key  # Client key (optional)
+    ca: ${CERT_DIR}/cert.pem    # CA certificate path (optional, CERT_DIR env var)
+    cert: ${CERT_DIR}/client.pem # Client certificate (optional)
+    key: ${CERT_DIR}/client.key  # Client key (optional)
     verify: false       # Verify server certificate (default: false for PoC)
   # proxy:               # Optional proxy settings
   #   host: proxy.example.com

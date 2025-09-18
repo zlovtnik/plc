@@ -1,6 +1,17 @@
 #!/usr/bin/env perl
 
-use lib '/Users/rcs/perl5/lib/perl5';
+use lib '/Users/rcs/# Rate limiting
+my $max_tokens = 100;     # Max tokens per client
+my $refill_rate = 10;     # Tokens per second
+
+# Idle timeout
+my $idle_timeout = 300;   # 5 minutes idle timeout for authenticated connections
+
+# Connection state
+my $active_connections = 0;
+my %auth_state;           # $id => 1 if authenticated
+my %rate_limits;          # $id => {tokens, last_refill, accumulator}
+my %conn_timers;          # $id => timer handleb/perl5';
 use Mojolicious::Lite;
 use Search::Elasticsearch;
 use JSON::MaybeXS;
@@ -11,6 +22,15 @@ use Log::Any::Adapter;
 Log::Any::Adapter->set('Stdout');
 
 my $json = JSON::MaybeXS->new;
+
+# Load configuration from environment
+my $auth_key = $ENV{AUTH_KEY} or die "AUTH_KEY environment variable not set\n";
+my $tls_cert = $ENV{TLS_CERT_PATH} or die "TLS_CERT_PATH environment variable not set\n";
+my $tls_key = $ENV{TLS_KEY_PATH} or die "TLS_KEY_PATH environment variable not set\n";
+
+# Validate certificate and key files
+-r $tls_cert or die "TLS certificate file $tls_cert is not readable\n";
+-r $tls_key or die "TLS key file $tls_key is not readable\n";
 
 # Create Elasticsearch client
 my $es = Search::Elasticsearch->new(
@@ -29,9 +49,6 @@ my %buffers;
 
 # Connection limits and security
 my $max_connections = 100;
-my $auth_key = 'secret';  # Simple auth key
-my $tls_cert = '/Users/rcs/git/plc/cert.pem';  # Path to TLS certificate
-my $tls_key = '/Users/rcs/git/plc/key.pem';   # Path to TLS private key
 
 # Rate limiting
 my $max_tokens = 100;     # Max tokens per client
@@ -57,7 +74,7 @@ Mojo::IOLoop->server({port => 8080, tls => 1, tls_cert => $tls_cert, tls_key => 
 
     $active_connections++;
     $auth_state{$id} = 0;  # Not authenticated yet
-    $rate_limits{$id} = {tokens => $max_tokens, last_refill => time()};
+    $rate_limits{$id} = {tokens => $max_tokens, last_refill => time(), accumulator => 0};
 
     $log->info("Accepted connection from $id");
 
@@ -84,6 +101,11 @@ Mojo::IOLoop->server({port => 8080, tls => 1, tls_cert => $tls_cert, tls_key => 
                 if ($line eq $auth_key) {
                     $auth_state{$id} = 1;
                     $log->info("Client $id authenticated");
+                    # Start idle timeout timer
+                    $conn_timers{$id} = Mojo::IOLoop->timer($idle_timeout => sub {
+                        $log->info("Idle timeout for $id, closing connection");
+                        $stream->close;
+                    });
                     next;  # Auth message consumed
                 } else {
                     $log->warn("Unauthorized message from $id: $line");
@@ -95,7 +117,10 @@ Mojo::IOLoop->server({port => 8080, tls => 1, tls_cert => $tls_cert, tls_key => 
             # Rate limiting
             my $now = time();
             my $elapsed = $now - $rate_limits{$id}{last_refill};
-            $rate_limits{$id}{tokens} += $elapsed * $refill_rate;
+            $rate_limits{$id}{accumulator} += $elapsed * $refill_rate;
+            my $tokens_to_add = int($rate_limits{$id}{accumulator});
+            $rate_limits{$id}{accumulator} -= $tokens_to_add;
+            $rate_limits{$id}{tokens} += $tokens_to_add;
             $rate_limits{$id}{tokens} = $max_tokens if $rate_limits{$id}{tokens} > $max_tokens;
             $rate_limits{$id}{last_refill} = $now;
 
@@ -135,6 +160,15 @@ Mojo::IOLoop->server({port => 8080, tls => 1, tls_cert => $tls_cert, tls_key => 
                 send_bulk();
             }
         }
+
+        # Reset idle timer if authenticated
+        if ($auth_state{$id}) {
+            Mojo::IOLoop->remove($conn_timers{$id}) if $conn_timers{$id};
+            $conn_timers{$id} = Mojo::IOLoop->timer($idle_timeout => sub {
+                $log->info("Idle timeout for $id, closing connection");
+                $stream->close;
+            });
+        }
     });
 
     $stream->on(close => sub {
@@ -142,12 +176,16 @@ Mojo::IOLoop->server({port => 8080, tls => 1, tls_cert => $tls_cert, tls_key => 
         delete $buffers{$id};
         delete $auth_state{$id};
         delete $rate_limits{$id};
+        Mojo::IOLoop->remove($conn_timers{$id}) if $conn_timers{$id};
+        delete $conn_timers{$id};
         $active_connections--;
     });
 
     $stream->on(error => sub {
         my ($stream, $err) = @_;
         $log->error("Connection error: $err");
+        Mojo::IOLoop->remove($conn_timers{$id}) if $conn_timers{$id};
+        delete $conn_timers{$id};
     });
 });
 
@@ -158,8 +196,8 @@ $flush_timer = Mojo::IOLoop->recurring(5 => sub {
 
 # Function to send bulk to ES
 sub send_bulk {
-return unless @bulk_buffer;
-
+    return unless @bulk_buffer;
+    $log->info("Sending bulk of " . @bulk_buffer . " logs to Elasticsearch");
     eval {
         my @bulk_actions;
         foreach my $entry (@bulk_buffer) {
