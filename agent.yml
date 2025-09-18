@@ -1,6 +1,35 @@
 collector:
-  host: 127.0.0.1
-  port: 8080
+  host: 127.0.0.1        # Default collector host (localhost for PoC)
+  port: 8080             # Default collector port
+  timeout: 30            # Connection timeout in seconds (default: 30)
+  retry:
+    max_attempts: 5      # Max reconnection attempts (default: 5)
+    backoff: 2           # Backoff multiplier (default: 2)
+    initial_delay: 1     # Initial delay in seconds (default: 1)
+  endpoints:             # Array of failover endpoints (optional, overrides host/port)
+    # - host: primary.example.com
+    #   port: 8080
+    # - host: backup.example.com
+    #   port: 8080
+  auth:
+    token: secret        # Authentication token (required for collector)
+    # username: user      # Alternative: username/password auth
+    # password: pass
+  tls:
+    ca: /Users/rcs/git/plc/cert.pem    # CA certificate path (optional)
+    cert: /Users/rcs/git/plc/client.pem # Client certificate (optional)
+    key: /Users/rcs/git/plc/client.key  # Client key (optional)
+    verify: false       # Verify server certificate (default: false for PoC)
+  # proxy:               # Optional proxy settings
+  #   host: proxy.example.com
+  #   port: 3128
 
 files:
-  - sample.log
+  - sample.log           # List of log files to tail
+
+log_handling:
+  rotation:
+    max_size: 10M        # Max file size before rotation (default: 10M, supports K/M/G)
+    max_age: 7d          # Max age before rotation (default: 7d, supports h/d/w)
+    compress: true       # Compress rotated files (default: true)
+  retention: 30d         # Retention period for rotated logs (default: 30d)

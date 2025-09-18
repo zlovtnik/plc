@@ -53,3 +53,5 @@ Phase 5: Deployment & Operations
 [ ] Task 5.3: Set up monitoring and alerting for the logging system itself (e.g., is the collector running? is Elasticsearch healthy?).
 
 [ ] Task 5.4: Implement TLS encryption for agent-collector communication.
+
+[ ] Task 5.5: Implement authentication for the web interface.
