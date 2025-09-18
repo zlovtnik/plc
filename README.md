@@ -8,7 +8,7 @@
 2. Install cpanm: `curl -L https://cpanmin.us | perl - --sudo App::cpanminus`
 3. Install Docker Desktop and start it.
 4. Start Elasticsearch: `docker-compose up -d`
-5. Install Perl modules: `cpanm Search::Elasticsearch`
+5. Install Perl modules: `cpanm Search::Elasticsearch JSON::MaybeXS File::Tail YAML::Tiny Mojolicious Log::Any`
 
 ### Running the Proof of Concept
 
@@ -19,7 +19,9 @@
 
 ### Files
 
-- `collector.pl`: TCP server that receives logs and indexes to Elasticsearch.
-- `agent.pl`: TCP client that sends a sample log message.
+- `collector.pl`: Mojolicious-based TCP server with bulk indexing, structured logging, and error handling.
+- `agent.pl`: TCP client that tails log files, formats as JSON, and sends to collector.
 - `search_logs.pl`: Script to query and display logs from Elasticsearch.
 - `docker-compose.yml`: Elasticsearch setup.
+- `agent.yml`: Configuration file for the agent.
+- `sample.log`: Sample log file for testing.

@@ -5,9 +5,22 @@ use warnings;
 use lib '/Users/rcs/perl5/lib/perl5';
 use IO::Socket::INET;
 use File::Tail;
+use JSON::MaybeXS;
+use Sys::Hostname;
+use YAML::Tiny;
 
-# Sample log file to tail
-my $log_file = 'sample.log';
+my $json = JSON::MaybeXS->new;
+
+# Load configuration
+my $yaml = YAML::Tiny->read('agent.yml');
+my $config = $yaml->[0];
+
+my $collector_host = $config->{collector}{host} || '127.0.0.1';
+my $collector_port = $config->{collector}{port} || 8080;
+my $files = $config->{files} || ['sample.log'];
+
+# For now, tail the first file
+my $log_file = $files->[0];
 
 # Create a tail object
 my $tail = File::Tail->new(
@@ -16,19 +29,52 @@ my $tail = File::Tail->new(
     maxinterval => 5
 );
 
-# Create a connecting socket
-my $socket = IO::Socket::INET->new(
-    PeerHost => '127.0.0.1',
-    PeerPort => 8080,
-    Proto    => 'tcp'
-) or die "Cannot connect to server: $!\n";
+my $socket;
+my @buffer;
 
-print "Agent connected to collector. Tailing $log_file...\n";
+sub connect_to_collector {
+    $socket = IO::Socket::INET->new(
+        PeerHost => $collector_host,
+        PeerPort => $collector_port,
+        Proto    => 'tcp'
+    );
+    if ($socket) {
+        print "Connected to collector at $collector_host:$collector_port\n";
+        # Send buffered messages
+        foreach my $msg (@buffer) {
+            print $socket $msg;
+        }
+        @buffer = ();
+    } else {
+        warn "Failed to connect to collector: $!\n";
+    }
+}
+
+connect_to_collector();
+
+print "Agent tailing $log_file...\n";
 
 while (defined(my $line = $tail->read)) {
     chomp $line;
-    print $socket "$line\n";
-    print "Sent: $line\n";
+
+    # Create JSON object
+    my $log_entry = {
+        message => $line,
+        timestamp => time(),
+        hostname => hostname(),
+        source => $log_file
+    };
+
+    my $json_str = $json->encode($log_entry) . "\n";
+
+    if ($socket && $socket->connected) {
+        print $socket $json_str;
+        print "Sent: $json_str";
+    } else {
+        push @buffer, $json_str;
+        print "Buffered: $json_str";
+        connect_to_collector();
+    }
 }
 
-close $socket;
+close $socket if $socket;

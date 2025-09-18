@@ -1,0 +1,6 @@
+collector:
+  host: 127.0.0.1
+  port: 8080
+
+files:
+  - sample.log
